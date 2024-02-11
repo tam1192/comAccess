@@ -7,3 +7,6 @@ comポート通信の実験用プログラムです。
 色々覚悟したうえで動かしてみたりしてください。  
 このプログラムを動作させた責任は私は負いません。
 ご注意ください。
+
+# inEnglish
+# If you want to move it, do so at your own risk.
