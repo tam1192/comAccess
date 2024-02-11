@@ -1,6 +1,5 @@
 ﻿#include<Windows.h>
 #include<strsafe.h>
-#include<iostream>
 #define BUFFERSIZE 1024
 
 // console input handle
@@ -51,6 +50,16 @@ int main(int argc, char const* argv[])
     if (console_output == INVALID_HANDLE_VALUE) {
         return GetLastError();
     }
+
+    // ctrl + c 
+    SetConsoleCtrlHandler(
+        NULL,
+        TRUE
+    );
+    SetConsoleMode(
+        console_input,
+        (ENABLE_ECHO_INPUT | ENABLE_INSERT_MODE )
+    );
 
     // comport
     comport = CreateFileA(
@@ -118,23 +127,42 @@ int main(int argc, char const* argv[])
                 {
                     KEY_EVENT_RECORD event = console_input_data[i].Event.KeyEvent;
                     if (event.bKeyDown == TRUE) {
-                        if (event.wVirtualKeyCode == VK_RETURN) {
+                        switch (event.wVirtualKeyCode)
+                        {
+                        case VK_RETURN:
                             comport_input_data[i] = 10;
                             comport_input_length++;
                             break;
-                        }
-                        else if (
-                            event.dwControlKeyState == RIGHT_CTRL_PRESSED ||
-                            event.dwControlKeyState == LEFT_CTRL_PRESSED
-                            ) {
-                            CHAR c = event.uChar.AsciiChar;
-                            comport_input_data[i] = (c - 64); // ascii control char
-                            comport_input_length++;
-                        }
-                        else {
+                        // ANSI ESCAPE CODE
+                        case VK_UP:
+                            comport_input_data[i] = 27;
+                            comport_input_data[i+1] = '[';
+                            comport_input_data[i+2] = 'A';
+                            comport_input_length+=3;
+                            break;
+                        case VK_DOWN:
+                            comport_input_data[i] = 27;
+                            comport_input_data[i+1] = '[';
+                            comport_input_data[i+2] = 'B';
+                            comport_input_length+=3;
+                            break;
+                        case VK_RIGHT:
+                            comport_input_data[i] = 27;
+                            comport_input_data[i+1] = '[';
+                            comport_input_data[i+2] = 'C';
+                            comport_input_length+=3;
+                            break;
+                        case VK_LEFT:
+                            comport_input_data[i] = 27;
+                            comport_input_data[i+1] = '[';
+                            comport_input_data[i+2] = 'D';
+                            comport_input_length+=3;
+                            break;
+                        default:
                             CHAR c = event.uChar.AsciiChar;
                             comport_input_data[i] = c;
                             comport_input_length++;
+                            break;
                         }
                     };
                 };
