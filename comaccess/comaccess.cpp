@@ -1,35 +1,7 @@
-﻿#include<Windows.h>
-#include<strsafe.h>
-#include<vector>
-#include<memory>
-// バッファーのサイズ
-#define BUFFERSIZE 1024
+﻿#include "comaccess.h"
 
-// コンソール入力のハンドル
-HANDLE console_input = INVALID_HANDLE_VALUE;
-// コンソール出力のハンドル
-HANDLE console_output = INVALID_HANDLE_VALUE;
 // comportの入出力のハンドル
-HANDLE comport = INVALID_HANDLE_VALUE;
-// comportのDCB構造体
-DCB comport_DCB;
-// comportのtimeout構造体
-COMMTIMEOUTS comport_timeout;
-
-/**
- * プログラム終了時処理.
- * 
- * \param dwCtrlType コントロールのタイプ（シグナル）
- * \return TRUEだと正常に動作
- */
-BOOL WINAPI CtrlHandler(DWORD dwCtrlType)
-{
-    if (comport != INVALID_HANDLE_VALUE)
-    {
-		return CloseHandle(comport);
-    }
-    return TRUE;
-}
+HANDLE comport;
 
 /**
  * COMポートをコンソールで扱うプログラムです.
@@ -42,72 +14,64 @@ BOOL WINAPI CtrlHandler(DWORD dwCtrlType)
  */
 int main(int argc, char const* argv[])
 {
+    // コンソール入出力ハンドラの初期化
+    DWORD consoleError = ConsoleInit();
+    if (consoleError != 0) {
+        return GetLastError();
+    }
+
     // 終了割込みハンドラ
     if (!SetConsoleCtrlHandler(CtrlHandler, TRUE)) 
     {
         // エラーを戻り値へ
-        return GetLastError();
+        return PrintErrorString(GetLastError());
     }
 
     // 引数の処理
     LPCCH comName; // COMポートの名前
     DWORD comSpeed; // COMポートの速度
-    DWORD comBits; // COMポートのbit
-    // 名前まで
-    if (argc >= 2) {
-        // そのまま代入
+    DWORD comBits; // COMポートのBit数
+    switch (argc)
+    {
+    case 2: // 名前のみ
         comName = argv[1];
+        comSpeed = 9600;
+        comBits = 8;
+        break;
+    case 3: // 名前と速度
+        comName = argv[1];
+        comSpeed = strtoul(argv[2], NULL, 10); // 文字を数値に変換
+        comBits = 8;
+        break;
+    case 4: // 名前、速度、bits
+        comName = argv[1];
+        comSpeed = strtoul(argv[2], NULL, 10);
+        comBits = strtoul(argv[3], NULL, 10);
+        break;
+    default:
+		// エラー表示
+		PrintString("There must be more than one argument\n\n");
+		// キー入力を待つ
+        GetEnter();
+        return -1;
+        break;
     }
-    // 何もないとき
-    else {
-        // COMポート未指定のエラー
+    // 速度値が1未満ならエラー
+    if (comSpeed < 1) {
+		// エラー表示
+		PrintString("Serial communication speeds need to be faster\n\n");
+		// キー入力を待つ
+        GetEnter();
         return -1;
     }
-    // 速度まで
-    if (argc >= 3) {
-        // 数値に直して代入
-        comSpeed = strtoul(argv[2], NULL, 10);
-    }
-    else {
-        // デフォルト
-        comSpeed = 9600;
-    }
-    // bitまで
-    if (argc >= 4) {
-        // 数値に直して代入
-        comSpeed = strtoul(argv[3], NULL, 10);
-        if (comSpeed < 5 || comSpeed>8) {
-            // 指定外の数字はエラー
-            return -1;
-        };
-    }
-    else {
-        // デフォルト
-        comBits = 8;
-    };
-
-    // コンソール入力ハンドラを入れる
-    console_input =
-        GetStdHandle(STD_INPUT_HANDLE); //input
-    // エラー処理
-    if (console_input == INVALID_HANDLE_VALUE) {
-        return GetLastError();
-    };
-    // コンソール出力ハンドラを入れる
-    console_output =
-        GetStdHandle(STD_OUTPUT_HANDLE); // output
-    // エラー処理
-    if (console_output == INVALID_HANDLE_VALUE) {
-        return GetLastError();
-    };
-
-    // コンソールモードを指定する
-    SetConsoleMode(
-        console_input,
-        // CTRL+Cをシステムプロセスに流さないようにする
-        (ENABLE_ECHO_INPUT | ENABLE_INSERT_MODE | ENABLE_LINE_INPUT)
-    );
-
+    // bit値が指定範囲外の数値ならエラー
+	if (comBits < 5 || comBits>8) {
+		// エラー表示
+		PrintString("The number of bits must be specified between 5 and 8\n\n");
+		// キー入力を待つ
+        GetEnter();
+		return -1;
+	};
     // comポートハンドラを入れる
     comport = CreateFileA(
         comName, // コムポートの名前
@@ -120,8 +84,12 @@ int main(int argc, char const* argv[])
     );
     // エラー処理
     if (comport == INVALID_HANDLE_VALUE) {
-        return GetLastError();
+        return PrintErrorString(GetLastError());
     }
+	// comportのDCB構造体
+	DCB comport_DCB;
+	// comportのtimeout構造体
+	COMMTIMEOUTS comport_timeout;
     // 現在のComポートのDCBステータスをDCB構造体に代入
     if (GetCommState(
         comport,
@@ -139,12 +107,12 @@ int main(int argc, char const* argv[])
         comport_DCB.fAbortOnError = TRUE;
         // DCB構造体の変更を適用、エラー処理
         if (!(SetCommState(comport, &comport_DCB))) {
-            return GetLastError();
+            return PrintErrorString(GetLastError());
         };
     }
     // エラー処理
     else {
-        return GetLastError();
+		return PrintErrorString(GetLastError());
     };
     // コムポートのタイムアウト時間を指定する
     if (GetCommTimeouts(
@@ -160,12 +128,12 @@ int main(int argc, char const* argv[])
 		comport_timeout.WriteTotalTimeoutMultiplier = 0;
         // timeout構造体の変更を適用、エラー処理
         if (!(SetCommTimeouts(comport, &comport_timeout))) {
-            return GetLastError();
+		    return PrintErrorString(GetLastError());
         };
     }
     // エラー処理
     else {
-        return GetLastError();
+		return PrintErrorString(GetLastError());
     };
 
     // バッファーの作成
@@ -205,6 +173,7 @@ int main(int argc, char const* argv[])
                 if (console_input_data[i].EventType == KEY_EVENT)
                 {
                     // 変数が長くならないようにする
+                    // &を追加してアドレスをそのまま使いまわすようにする。
                     KEY_EVENT_RECORD& event = console_input_data[i].Event.KeyEvent;
                     // キーが押されていたら...
                     if (event.bKeyDown == TRUE) {
